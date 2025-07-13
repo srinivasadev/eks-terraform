@@ -23,5 +23,5 @@ The architecture includes a VPC with public and private subnets across multiple 
 
 ## Screenshot
 
-![alt text](<Screenshot 2025-07-12 at 8.28.16 PM.png>)
+![alt text](image.png)
 
