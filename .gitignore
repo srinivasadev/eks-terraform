@@ -1,0 +1,17 @@
+*.tfstate
+*.tfstate.backup
+
+crash.log
+
+.terraform/
+
+*.tfplan
+
+.DS_Store
+
+.vscode/
+.idea/
+*.swp
+
+venv/
+__pycache__/
