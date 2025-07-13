@@ -1,11 +1,11 @@
+data "aws_eks_cluster_auth" "this" {
+  name = aws_eks_cluster.this.name
+}
+
 provider "kubernetes" {
   host                   = aws_eks_cluster.this.endpoint
   cluster_ca_certificate = base64decode(aws_eks_cluster.this.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.this.token
-}
-
-data "aws_eks_cluster_auth" "this" {
-  name = aws_eks_cluster.this.name
 }
 
 # Security Group for Worker Nodes
@@ -18,6 +18,14 @@ resource "aws_security_group" "worker_sg" {
     description = "Allow worker nodes to communicate with cluster"
     from_port   = 443
     to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow HTTP traffic for Nginx"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -76,18 +84,6 @@ resource "aws_eks_cluster" "this" {
   ]
 }
 
-# Automatically update kubeconfig after cluster creation
-
-resource "null_resource" "update_kubeconfig" {
-  depends_on = [aws_eks_cluster.this]
-
-  provisioner "local-exec" {
-    command = <<EOT
-      aws eks update-kubeconfig --region ${var.aws_region} --name ${aws_eks_cluster.this.name}
-    EOT
-  }
-}
-
 # IAM Role for Worker Nodes
 resource "aws_iam_role" "eks_nodes" {
   name = "${var.name_prefix}-eks-node-role"
@@ -104,18 +100,14 @@ resource "aws_iam_role" "eks_nodes" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "eks_worker_AmazonEKSWorkerNodePolicy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role       = aws_iam_role.eks_nodes.name
-}
+resource "aws_iam_role_policy_attachment" "eks_worker_policies" {
+  for_each   = toset([
+    "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+    "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  ])
 
-resource "aws_iam_role_policy_attachment" "eks_worker_AmazonEKS_CNI_Policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role       = aws_iam_role.eks_nodes.name
-}
-
-resource "aws_iam_role_policy_attachment" "eks_worker_AmazonEC2ContainerRegistryReadOnly" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  policy_arn = each.value
   role       = aws_iam_role.eks_nodes.name
 }
 
@@ -157,7 +149,7 @@ resource "aws_eks_node_group" "this" {
     min_size     = 1
   }
 
-  instance_types = ["t3.micro"]
+  instance_types = var.instance_types
 
   depends_on = [
     null_resource.aws_auth_configmap
